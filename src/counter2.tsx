@@ -1,0 +1,13 @@
+"use client";
+
+import { useState } from "react";
+
+export function Counter2() {
+  const [count, setCount] = useState(0);
+
+  return (
+    <button onClick={() => setCount((c) => c + 1)}>
+      Second Count: {count}
+    </button>
+  );
+}
