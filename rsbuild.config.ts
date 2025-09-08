@@ -31,7 +31,6 @@ export default defineConfig({
         distPath: {
           root: "dist/node",
         },
-        externals: ["react-markdown"],
       },
     },
   },
