@@ -13,7 +13,7 @@ export default {
   async fetch(request: Request): Promise<Response> {
     const rscResponse = await reactServer.fetch(request);
 
-    if (request.headers.get("Accept")?.match(/text\/x-component/)) {
+    if (request.headers.get("Accept")?.match(/\btext\/x-component\b/)) {
       return rscResponse;
     }
     
