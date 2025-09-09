@@ -9,7 +9,11 @@ export default defineConfig({
     web: {
       source: {
         entry: {
-          index: { import: "./src/entry.web.tsx", html: false },
+          index: {
+            import: "./src/entry.web.tsx",
+            layer: "react-client",
+            html: false,
+          },
         },
       },
       output: {
@@ -23,7 +27,7 @@ export default defineConfig({
     node: {
       source: {
         entry: {
-          index: { import: "./src/entry.node.tsx" },
+          index: { import: "./src/entry.node.tsx", layer: "react-client" },
         },
       },
       output: {

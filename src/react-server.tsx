@@ -3,25 +3,12 @@ import {
   decodeAction,
   decodeReply,
   renderToReadableStream,
+  serverManifest,
 } from "react-server-dom-rsbuild/server";
 
 import { sayHello } from "./actions";
 import { Counter } from "./counter";
 import { Counter2 } from "./counter2";
-
-declare const ___REACT_CLIENT_MANIFEST___: unknown;
-declare const ___REACT_SERVER_MANIFEST___: Record<
-  string,
-  {
-    id: string | number;
-    name: string;
-    chunks: (string | number)[];
-    async: boolean;
-  }
->;
-
-const clientManifest = ___REACT_CLIENT_MANIFEST___;
-const serverManifest = ___REACT_SERVER_MANIFEST___;
 
 export type ReactServerPayload = {
   action?: Promise<any>;
@@ -45,9 +32,11 @@ export default {
             __webpack_require__(metadata.id)
           ).then((mod) => mod[metadata.name]);
 
-          const formData = await request.formData();
+          const reply = await (isFormDataRequest(request)
+            ? request.formData()
+            : request.text());
           const decodeReplyPromise = decodeReply<unknown[]>(
-            formData,
+            reply,
             serverManifest
           );
 
@@ -99,3 +88,10 @@ export default {
     });
   },
 };
+
+function isFormDataRequest(request: Request): boolean {
+  const contentType = request.headers.get("Content-Type") || "";
+  return !!contentType.match(
+    /\b(multipart\/form-data|application\/x-www-form-urlencoded)\b/
+  );
+}

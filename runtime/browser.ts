@@ -23,6 +23,10 @@ export function setServerCallback(
   defaultCallServer = callServer;
 }
 
+export function callServer(id: string, args: any[]) {
+  return defaultCallServer!(id, args);
+}
+
 export function createFromFetch<T>(
   response: Promise<Response>,
   options?: {

@@ -13,11 +13,10 @@ import { addResourceToCompilation } from "./utils/webpack.ts";
 
 const PLUGIN_NAME = "PluginReactServer";
 
-type EnvironmentsConfig = {
-  client: string;
-  ssr: string;
-  server: string;
-};
+type EnvironmentsConfig = Record<
+  "client" | "ssr" | "server",
+  string | { name: string; layer?: string }
+>;
 
 type ClientReference = {
   id: string;
@@ -31,16 +30,23 @@ type ServerReference = {
 
 export function pluginReactServer({
   enableEncryption,
-  environments,
-  layer = "react-server",
+  environments: _environments,
 }: {
   environments: EnvironmentsConfig;
-  layer?: string;
   enableEncryption?: boolean;
 }) {
   if (enableEncryption) {
     throw new Error("enableEncryption is not supported yet");
   }
+
+  const environments = Object.fromEntries(
+    Object.entries(_environments).map(([key, value]) => {
+      const defaultLayer = key === "server" ? "react-server" : "react-client";
+      return typeof value === "object"
+        ? [key, { ...value, layer: value.layer || defaultLayer }]
+        : [key, { name: value, layer: defaultLayer }];
+    })
+  ) as Record<"client" | "ssr" | "server", { name: string; layer?: string }>;
 
   return {
     name: PLUGIN_NAME,
@@ -57,9 +63,9 @@ export function pluginReactServer({
       const clientReferencesMap = new Map<string, ClientReference>();
       const serverReferencesMap = new Map<string, ServerReference>();
       const waitForStartResolvers = {
-        [environments.client]: Promise.withResolvers<void>(),
-        [environments.ssr]: Promise.withResolvers<void>(),
-        [environments.server]: Promise.withResolvers<void>(),
+        [environments.client.name]: Promise.withResolvers<void>(),
+        [environments.ssr.name]: Promise.withResolvers<void>(),
+        [environments.server.name]: Promise.withResolvers<void>(),
       };
 
       api.onBeforeEnvironmentCompile(({ environment }) => {
@@ -79,7 +85,7 @@ export function pluginReactServer({
       });
 
       api.processAssets(
-        { stage: "optimize", environments: [environments.server] },
+        { stage: "optimize", environments: [environments.server.name] },
         async ({ compilation }) => {
           const { compiler, name } = compilation;
           if (!name) throw new Error("Compilation name is undefined");
@@ -95,9 +101,13 @@ export function pluginReactServer({
           await Promise.all(Object.values(waitForMake));
 
           if (!needsRebuild.get(name)) {
-            const clientStatsObj = await resolvers.get(environments.client)!
-              .stats.promise;
-            const clientStats = clientStatsObj.toJson();
+            const clientStatsObj = await resolvers.get(
+              environments.client.name
+            )!.stats.promise;
+            const clientStats = clientStatsObj.toJson({
+              chunks: true,
+              modules: true,
+            });
 
             const collectClientChunks = (
               chunks: (string | number)[] | undefined,
@@ -137,23 +147,22 @@ export function pluginReactServer({
 
             for (const [resource, clientReference] of clientReferencesMap) {
               const mod = clientStats.modules?.find(
-                (mod) => mod.nameForCondition === resource
+                (mod) =>
+                  (typeof mod.id === "number" || typeof mod.id === "string") &&
+                  mod.layer === environments.client.layer &&
+                  mod.nameForCondition === resource
               );
               if (!mod) {
                 throw new Error(
                   `Could not find client module for resource ${resource}`
                 );
               }
-              if (!mod.id) {
-                throw new Error(
-                  `Client module has no id for resource ${resource}`
-                );
-              }
+
               const chunks = Array.from(collectClientChunks(mod.chunks));
 
               for (const exportName of clientReference.exportNames) {
                 reactClientManifest[`${clientReference.id}#${exportName}`] = {
-                  id: mod.id,
+                  id: mod.id!,
                   name: exportName,
                   async: true,
                   chunks,
@@ -202,23 +211,22 @@ export function pluginReactServer({
 
             for (const [resource, serverReference] of serverReferencesMap) {
               const mod = serverStats.modules?.find(
-                (mod) => mod.nameForCondition === resource
+                (mod) =>
+                  (typeof mod.id === "number" || typeof mod.id === "string") &&
+                  mod.layer === environments.server.layer &&
+                  mod.nameForCondition === resource
               );
               if (!mod) {
                 throw new Error(
                   `Could not find server module for resource ${resource}`
                 );
               }
-              if (!mod.id) {
-                throw new Error(
-                  `Server module has no id for resource ${resource}`
-                );
-              }
+
               const chunks = Array.from(collectServerChunks(mod.chunks));
 
               for (const exportName of serverReference.exportNames) {
                 reactServerManifest[`${serverReference.id}#${exportName}`] = {
-                  id: mod.id,
+                  id: mod.id!,
                   name: exportName,
                   async: true,
                   chunks,
@@ -253,7 +261,7 @@ export function pluginReactServer({
       );
 
       api.processAssets(
-        { stage: "optimize", environments: [environments.ssr] },
+        { stage: "optimize", environments: [environments.ssr.name] },
         async ({ compilation }) => {
           const { compiler, name } = compilation;
           if (!name) throw new Error("Compilation name is undefined");
@@ -269,12 +277,19 @@ export function pluginReactServer({
           await Promise.all(Object.values(waitForMake));
 
           if (!needsRebuild.get(name)) {
-            const clientStatsObj = await resolvers.get(environments.client)!
-              .stats.promise;
-            const clientStats = clientStatsObj.toJson();
+            const clientStatsObj = await resolvers.get(
+              environments.client.name
+            )!.stats.promise;
+            const clientStats = clientStatsObj.toJson({
+              chunks: true,
+              modules: true,
+            });
 
             const ssrStatsObj = compilation.getStats();
-            const ssrStats = ssrStatsObj.toJson();
+            const ssrStats = ssrStatsObj.toJson({
+              chunks: true,
+              modules: true,
+            });
 
             const collectSsrChunks = (
               chunks: (string | number)[] | undefined,
@@ -333,39 +348,35 @@ export function pluginReactServer({
 
             for (const [resource, clientReference] of clientReferencesMap) {
               const clientMod = clientStats.modules?.find(
-                (mod) => mod.nameForCondition === resource
+                (mod) =>
+                  (typeof mod.id === "number" || typeof mod.id === "string") &&
+                  mod.layer === environments.client.layer &&
+                  mod.nameForCondition === resource
               );
               if (!clientMod) {
                 throw new Error(
                   `Could not find client module for resource ${resource}`
                 );
               }
-              if (!clientMod.id) {
-                throw new Error(
-                  `Client module has no id for resource ${resource}`
-                );
-              }
 
               const mod = ssrStats.modules?.find(
-                (mod) => mod.id && mod.nameForCondition === resource
+                (mod) =>
+                  (typeof mod.id === "number" || typeof mod.id === "string") &&
+                  mod.layer === environments.ssr.layer &&
+                  mod.nameForCondition === resource
               );
               if (!mod) {
                 throw new Error(
                   `Could not find ssr module for resource ${resource}`
                 );
               }
-              if (!mod.id) {
-                throw new Error(
-                  `Ssr module has no id for resource ${resource}`
-                );
-              }
 
               const chunks = Array.from(collectSsrChunks(mod.chunks));
 
-              reactSsrManifest.moduleMap[clientMod.id] ??= {};
+              reactSsrManifest.moduleMap[clientMod.id!] ??= {};
               for (const name of clientReference.exportNames) {
-                reactSsrManifest.moduleMap[clientMod.id][name] = {
-                  id: mod.id,
+                reactSsrManifest.moduleMap[clientMod.id!][name] = {
+                  id: mod.id!,
                   chunks,
                   name,
                   async: true,
@@ -400,7 +411,11 @@ export function pluginReactServer({
       );
 
       api.transform(
-        { environments: [environments.server], issuerLayer: layer, layer },
+        {
+          environments: [environments.server.name],
+          issuerLayer: environments.server.layer,
+          layer: environments.server.layer,
+        },
         ({ code, resourcePath }) => {
           const { program } = parseSync(resourcePath, code);
 
@@ -506,9 +521,82 @@ export function pluginReactServer({
         }
       );
 
+      const transformUseServerClientEnvironment = ({
+        code,
+        environment,
+        resourcePath,
+      }: {
+        code: string;
+        environment: { name: string };
+        resourcePath: string;
+      }): string | { code: string; map: any } => {
+        const { program } = parseSync(resourcePath, code);
+
+        const root = path.resolve(api.getRsbuildConfig().root || process.cwd());
+        const id = path.relative(root, resourcePath).replaceAll("\\", "/");
+
+        const useServerTransformResult = transformDirectiveProxyExport(
+          program as any,
+          {
+            code,
+            runtime: (name) =>
+              `__ReactClient__.createServerReference(` +
+              `${JSON.stringify(id + "#" + name)},` +
+              (environments.ssr.name === environment.name
+                ? "undefined, "
+                : `__ReactClient__.callServer, `) +
+              `undefined, ` +
+              `undefined, ` +
+              // (this.environment.mode === 'dev'
+              //   ? `$$ReactClient.findSourceMapURL,`
+              //   : 'undefined,') +
+              `${JSON.stringify(name)})`,
+            directive: "use server",
+            rejectNonAsyncFunction: true,
+          }
+        );
+
+        if (useServerTransformResult) {
+          serverReferencesMap.set(resourcePath, {
+            id,
+            exportNames: useServerTransformResult.exportNames,
+          });
+
+          useServerTransformResult.output.prepend(
+            `import * as __ReactClient__ from "react-server-dom-rsbuild/${
+              environments.ssr.name === environment.name ? "ssr" : "browser"
+            }";\n`
+          );
+
+          return {
+            code: useServerTransformResult.output.toString(),
+            map: useServerTransformResult.output.generateMap(),
+          };
+        }
+
+        return code;
+      };
+
+      api.transform(
+        {
+          environments: [environments.client.name],
+          issuerLayer: environments.client.layer,
+          layer: environments.client.layer,
+        },
+        transformUseServerClientEnvironment
+      );
+      api.transform(
+        {
+          environments: [environments.ssr.name],
+          issuerLayer: environments.ssr.layer,
+          layer: environments.ssr.layer,
+        },
+        transformUseServerClientEnvironment
+      );
+
       api.modifyEnvironmentConfig(
         (config, { mergeEnvironmentConfig, name }) => {
-          if (environments.server === name) {
+          if (environments.server.name === name) {
             return mergeEnvironmentConfig(config, {
               tools: {
                 rspack: {
@@ -519,13 +607,13 @@ export function pluginReactServer({
                     rules: [
                       {
                         with: { env: "react-server" },
-                        layer,
+                        layer: environments.server.layer,
                         resolve: {
                           conditionNames: ["react-server", "webpack", "..."],
                         },
                       },
                       {
-                        issuerLayer: layer,
+                        issuerLayer: environments.server.layer,
                         resolve: {
                           conditionNames: ["react-server", "webpack", "..."],
                         },
@@ -536,6 +624,16 @@ export function pluginReactServer({
               },
             });
           }
+
+          return mergeEnvironmentConfig(config, {
+            tools: {
+              rspack: {
+                experiments: {
+                  layers: true,
+                },
+              },
+            },
+          });
         }
       );
 
@@ -578,24 +676,34 @@ export function pluginReactServer({
 
                 //////////////////////////////////////////////////////
                 if (
-                  environments.client === compilation.name ||
-                  environments.ssr === compilation.name
+                  environments.client.name === compilation.name ||
+                  environments.ssr.name === compilation.name
                 ) {
                   await Promise.all(
                     clientReferencesMap
                       .keys()
                       .map((resource) =>
-                        addResourceToCompilation(compilation, resource)
+                        addResourceToCompilation(
+                          compilation,
+                          resource,
+                          environments.ssr.name === compilation.name
+                            ? environments.ssr.layer
+                            : environments.client.layer
+                        )
                       )
                   );
                 }
 
-                if (environments.server === compilation.name) {
+                if (environments.server.name === compilation.name) {
                   await Promise.all(
                     serverReferencesMap
                       .keys()
                       .map((resource) =>
-                        addResourceToCompilation(compilation, resource, layer)
+                        addResourceToCompilation(
+                          compilation,
+                          resource,
+                          environments.server.layer
+                        )
                       )
                   );
                 }
@@ -608,13 +716,13 @@ export function pluginReactServer({
 
                 if (startClientReferenceCount !== clientReferencesMap.size) {
                   needsRebuild.set(
-                    environments.client,
-                    (needsRebuild.get(environments.client) ?? 0) + 1
+                    environments.client.name,
+                    (needsRebuild.get(environments.client.name) ?? 0) + 1
                   );
                   if (environments.ssr !== environments.server) {
                     needsRebuild.set(
-                      environments.ssr,
-                      (needsRebuild.get(environments.ssr) ?? 0) + 1
+                      environments.ssr.name,
+                      (needsRebuild.get(environments.ssr.name) ?? 0) + 1
                     );
                   }
                 }
