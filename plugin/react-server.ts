@@ -222,14 +222,14 @@ export function pluginReactServer({
                 );
               }
 
-              const chunks = Array.from(collectServerChunks(mod.chunks));
+              // const chunks = Array.from(collectServerChunks(mod.chunks));
 
               for (const exportName of serverReference.exportNames) {
                 reactServerManifest[`${serverReference.id}#${exportName}`] = {
                   id: mod.id!,
                   name: exportName,
                   async: true,
-                  chunks,
+                  chunks: [],
                 };
               }
             }
@@ -371,13 +371,13 @@ export function pluginReactServer({
                 );
               }
 
-              const chunks = Array.from(collectSsrChunks(mod.chunks));
+              // const chunks = Array.from(collectSsrChunks(mod.chunks));
 
               reactSsrManifest.moduleMap[clientMod.id!] ??= {};
               for (const name of clientReference.exportNames) {
                 reactSsrManifest.moduleMap[clientMod.id!][name] = {
                   id: mod.id!,
-                  chunks,
+                  chunks: [],
                   name,
                   async: true,
                 };

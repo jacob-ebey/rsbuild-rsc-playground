@@ -1,31 +1,45 @@
-import { startTransition } from "react";
+import { startTransition, StrictMode } from "react";
 import { hydrateRoot } from "react-dom/client";
 import {
-  createFromFetch,
+  unstable_createCallServer as createCallServer,
+  unstable_getRSCStream as getRSCStream,
+  unstable_RSCHydratedRouter as RSCHydratedRouter,
+  type unstable_RSCPayload as RSCServerPayload,
+} from "react-router";
+import {
   createFromReadableStream,
+  createTemporaryReferenceSet,
   encodeReply,
   setServerCallback,
 } from "react-server-dom-rsbuild/browser";
-import { rscStream } from "rsc-html-stream/client";
 
-import type { ReactServerPayload } from "./react-server";
-
-async function callServer(id: string, args: any[]) {
-  const body = await encodeReply(args);
-  const responsePromise = fetch(window.location.href, {
-    body,
-    headers: {
-      Accept: "text/x-component",
-      "x-rsc-action": id,
-    },
-    method: "POST",
-  });
-  return createFromFetch(responsePromise);
-}
-
-setServerCallback(callServer);
-createFromReadableStream<ReactServerPayload>(rscStream).then((payload) =>
-  startTransition(() => {
-    hydrateRoot(document, payload.root);
+// Create and set the callServer function to support post-hydration server actions.
+setServerCallback(
+  createCallServer({
+    createFromReadableStream,
+    createTemporaryReferenceSet,
+    encodeReply,
   })
 );
+
+// Get and decode the initial server payload
+createFromReadableStream<RSCServerPayload>(getRSCStream()).then((payload) => {
+  startTransition(async () => {
+    const formState =
+      payload.type === "render" ? await payload.formState : undefined;
+
+    hydrateRoot(
+      document,
+      <StrictMode>
+        <RSCHydratedRouter
+          createFromReadableStream={createFromReadableStream}
+          payload={payload}
+        />
+      </StrictMode>,
+      {
+        // @ts-expect-error - no types for this yet
+        formState,
+      }
+    );
+  });
+});

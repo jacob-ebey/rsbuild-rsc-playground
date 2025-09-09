@@ -1,48 +1,34 @@
 import "client-only";
 import ReactDOM from "react-dom/server.edge";
+import { unstable_routeRSCServerRequest as routeRSCServerRequest, unstable_RSCStaticRouter as RSCStaticRouter } from "react-router";
 import { bootstrapScripts, createFromReadableStream } from "react-server-dom-rsbuild/ssr";
-import { injectRSCPayload } from "rsc-html-stream/server";
 
-import reactServer, { ReactServerPayload } from "./react-server" with { env: "react-server" };
+import reactServer from "./react-server" with { env: "react-server" };
 
 export default {
   async fetch(request: Request): Promise<Response> {
-    const rscResponse = await reactServer.fetch(request);
+    return await routeRSCServerRequest({
+    // The incoming request.
+    request,
+    // How to call the React Server.
+    fetchServer: reactServer.fetch,
+    // Provide the React Server touchpoints.
+    createFromReadableStream,
+    // Render the router to HTML.
+    async renderHTML(getPayload) {
+      const payload = await getPayload();
+      const formState =
+        payload.type === "render" ? await payload.formState : undefined;
 
-    if (request.headers.get("Accept")?.match(/\btext\/x-component\b/)) {
-      return rscResponse;
-    }
-    
-    const [rscStream, rscStreamClone] = rscResponse.body!.tee();
-    const streamBuffer: Uint8Array[] = [];
-    await rscStream.pipeTo(
-      new WritableStream({
-        write(chunk) {
-          streamBuffer.push(chunk);
+      return await ReactDOM.renderToReadableStream(
+        <RSCStaticRouter getPayload={getPayload} />,
+        {
+          bootstrapScripts,
+          // @ts-expect-error - no types for this yet
+          formState,
         },
-      })
-    );
-
-    const payload: ReactServerPayload = await createFromReadableStream(
-      new ReadableStream({
-        start(controller) {
-          for (const chunk of streamBuffer) {
-            controller.enqueue(chunk);
-          }
-          controller.close();
-        },
-      }),
-      {
-        replayConsoleLogs: false,
-      }
-    );
-
-    const reactStream = await ReactDOM.renderToReadableStream(payload.root, {
-      bootstrapScripts,
-      signal: request.signal,
-    });
-    return new Response(reactStream.pipeThrough(injectRSCPayload(rscStreamClone)), {
-      headers: { "Content-Type": "text/html", Vary: "Accept" },
-    });
+      );
+    },
+  });
   },
 };

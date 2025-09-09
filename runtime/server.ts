@@ -33,9 +33,23 @@ declare const ___REACT_SERVER_MANIFEST___: Record<
 export const clientManifest = ___REACT_CLIENT_MANIFEST___;
 export const serverManifest = ___REACT_SERVER_MANIFEST___;
 
+export async function loadServerAction<T extends Function>(
+  actionId: string | number
+): Promise<T> {
+  const metadata = serverManifest[actionId];
+  await Promise.all(
+    // @ts-expect-error - no types
+    metadata.chunks.map((chunk) => __webpack_require__.e(chunk))
+  );
+  return Promise.resolve(
+    // @ts-expect-error - no types
+    __webpack_require__(metadata.id)
+  ).then((mod) => mod[metadata.name]);
+}
+
 export function decodeAction<T extends (...args: any[]) => any>(
   body: FormData
-): T | null {
+): Promise<T> {
   return _decodeAction<T>(body, serverManifest);
 }
 
