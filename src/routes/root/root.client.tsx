@@ -10,6 +10,8 @@ import {
 
 import type { loader } from "./root";
 
+import "./styles.css";
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

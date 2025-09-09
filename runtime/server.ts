@@ -1,4 +1,5 @@
-import { ReactFormState } from "react-dom/client";
+import { createElement, Fragment } from "react";
+import type { ReactFormState } from "react-dom/client";
 import {
   createClientModuleProxy,
   createTemporaryReferenceSet,
@@ -29,9 +30,31 @@ declare const ___REACT_SERVER_MANIFEST___: Record<
     async: boolean;
   }
 >;
+declare const ___REACT_CSS_MANIFEST___: Record<string, string[]>;
 
 export const clientManifest = ___REACT_CLIENT_MANIFEST___;
 export const serverManifest = ___REACT_SERVER_MANIFEST___;
+const cssManifest = ___REACT_CSS_MANIFEST___;
+
+export function wrapCss(id: string, Component: React.FunctionComponent) {
+  return (props: any) => {
+    console.log("HERE!!!", id, cssManifest[id]);
+    const links =
+      cssManifest[id]?.map((href) =>
+        createElement("link", {
+          rel: "stylesheet",
+          href,
+          key: href,
+        })
+      ) ?? [];
+    return createElement(
+      Fragment,
+      null,
+      ...links,
+      createElement(Component, props)
+    );
+  };
+}
 
 export async function loadServerAction<T extends Function>(
   actionId: string | number

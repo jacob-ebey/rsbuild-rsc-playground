@@ -5,8 +5,10 @@ import type { Compiler, Stats } from "@rspack/core";
 import { parseSync } from "oxc-parser";
 
 import {
+  hasDirective,
   transformDirectiveProxyExport,
   transformServerActionServer,
+  transformWrapExport,
 } from "@vitejs/plugin-rsc/transforms";
 
 import { addResourceToCompilation } from "./utils/webpack.ts";
@@ -105,6 +107,7 @@ export function pluginReactServer({
               environments.client.name
             )!.stats.promise;
             const clientStats = clientStatsObj.toJson({
+              assets: true,
               chunks: true,
               modules: true,
             });
@@ -234,6 +237,15 @@ export function pluginReactServer({
               }
             }
 
+            const allCssFiles: string[] = [];
+            for (const asset of clientStats.assets ?? []) {
+              if (asset.name.endsWith(".css")) {
+                allCssFiles.push(
+                  `${clientStats.publicPath || "/"}${asset.name}`
+                );
+              }
+            }
+
             for (const chunk of compilation.chunks) {
               for (const file of chunk.files) {
                 compilation.updateAsset(file, (asset) => {
@@ -251,6 +263,14 @@ export function pluginReactServer({
                       .replace(
                         /\b___REACT_SERVER_MANIFEST___\b/g,
                         JSON.stringify(reactServerManifest)
+                      )
+                      .replace(
+                        /\b___REACT_CSS_MANIFEST___\b/g,
+                        `(new Proxy({}, {
+                          get() {
+                            return ${JSON.stringify(allCssFiles)};
+                          }
+                        }))`
                       )
                   );
                 });
@@ -407,6 +427,56 @@ export function pluginReactServer({
               }
             }
           }
+        }
+      );
+
+      api.transform(
+        {
+          environments: [environments.server.name],
+          layer: environments.server.layer,
+        },
+        ({ code, resourcePath, environment }) => {
+          const { program } = parseSync(resourcePath, code);
+
+          if (
+            hasDirective(program.body as any, "use client") ||
+            environment.name !== environments.server.name
+          ) {
+            return code;
+          }
+
+          const root = path.resolve(
+            api.getRsbuildConfig().root || process.cwd()
+          );
+          const id = path.relative(root, resourcePath).replaceAll("\\", "/");
+
+          const serverCssTransformResult = transformWrapExport(
+            code,
+            program as any,
+            {
+              filter: (name, meta) => {
+                return !!meta.isFunction && name[0] === name[0].toUpperCase();
+              },
+              ignoreExportAllDeclaration: true,
+              runtime: (value) =>
+                `___ReactServer___.wrapCss(${JSON.stringify(id)}, ${value})`,
+            }
+          );
+
+          if (!serverCssTransformResult.output.hasChanged()) {
+            return code;
+          }
+
+          if (!code.includes("___ReactServer___")) {
+            serverCssTransformResult.output.prepend(
+              `import * as ___ReactServer___ from "react-server-dom-rsbuild/server" with { env: "react-server" };\n`
+            );
+          }
+
+          return {
+            code: serverCssTransformResult.output.toString(),
+            map: serverCssTransformResult.output.generateMap(),
+          };
         }
       );
 
@@ -576,7 +646,6 @@ export function pluginReactServer({
 
         return code;
       };
-
       api.transform(
         {
           environments: [environments.client.name],
