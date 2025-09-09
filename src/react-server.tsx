@@ -3,8 +3,7 @@ import {
   decodeAction,
   decodeReply,
   renderToReadableStream,
-  // @ts-expect-error - no types
-} from "react-server-dom-webpack/server.edge";
+} from "react-server-dom-rsbuild/server";
 
 import { sayHello } from "./actions";
 import { Counter } from "./counter";
@@ -47,7 +46,10 @@ export default {
           ).then((mod) => mod[metadata.name]);
 
           const formData = await request.formData();
-          const decodeReplyPromise = decodeReply(formData, serverManifest);
+          const decodeReplyPromise = decodeReply<unknown[]>(
+            formData,
+            serverManifest
+          );
 
           const [actionFunction, args] = await Promise.all([
             actionFunctionPromise,
@@ -58,9 +60,11 @@ export default {
           await action;
         } else {
           const formData = await request.formData();
-          const boundAction = await decodeAction(formData, serverManifest);
-          action = Promise.resolve(boundAction());
-          await action;
+          const boundAction = await decodeAction(formData);
+          if (boundAction) {
+            action = Promise.resolve(boundAction());
+            await action;
+          }
         }
       } catch (error) {
         console.error("Error executing action:", error);
@@ -86,7 +90,7 @@ export default {
       ),
     };
 
-    const rscStream = renderToReadableStream(payload, clientManifest, {
+    const rscStream = renderToReadableStream(payload, {
       signal: request.signal,
     });
 

@@ -404,6 +404,11 @@ export function pluginReactServer({
         ({ code, resourcePath }) => {
           const { program } = parseSync(resourcePath, code);
 
+          const root = path.resolve(
+            api.getRsbuildConfig().root || process.cwd()
+          );
+          const id = path.relative(root, resourcePath).replaceAll("\\", "/");
+
           const useClientTransformResult = transformDirectiveProxyExport(
             program as any,
             {
@@ -417,13 +422,6 @@ export function pluginReactServer({
                 if (meta?.value) {
                   proxyValue = `(${meta.value})`;
                 }
-
-                const root = path.resolve(
-                  api.getRsbuildConfig().root || process.cwd()
-                );
-                const id = path
-                  .relative(root, resourcePath)
-                  .replaceAll("\\", "/");
 
                 return (
                   `___ReactServer___.registerClientReference(` +
@@ -474,11 +472,6 @@ export function pluginReactServer({
             );
           }
 
-          const root = path.resolve(
-            api.getRsbuildConfig().root || process.cwd()
-          );
-          const id = path.relative(root, resourcePath).replaceAll("\\", "/");
-
           if (useClientTransformResult) {
             clientReferencesMap.set(resourcePath, {
               id,
@@ -486,7 +479,7 @@ export function pluginReactServer({
             });
 
             useClientTransformResult.output.prepend(
-              `import ___ReactServer___ from "react-server-dom-webpack/server";\n`
+              `import * as ___ReactServer___ from "react-server-dom-rsbuild/server";\n`
             );
 
             return {
@@ -500,7 +493,7 @@ export function pluginReactServer({
             });
 
             useServerTransformResult.output.prepend(
-              `import ___ReactServer___ from "react-server-dom-webpack/server";\n`
+              `import * as ___ReactServer___ from "react-server-dom-rsbuild/server";\n`
             );
 
             return {

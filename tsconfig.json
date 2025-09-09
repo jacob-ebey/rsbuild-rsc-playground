@@ -7,6 +7,12 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "strict": true
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "react-server-dom-rsbuild/browser": ["./runtime/browser.ts"],
+      "react-server-dom-rsbuild/ssr": ["./runtime/ssr.ts"],
+      "react-server-dom-rsbuild/server": ["./runtime/server.ts"]
+    }
   }
 }

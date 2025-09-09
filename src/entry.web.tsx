@@ -4,8 +4,8 @@ import {
   createFromFetch,
   createFromReadableStream,
   encodeReply,
-  // @ts-expect-error - no types
-} from "react-server-dom-webpack/client.browser";
+  setServerCallback,
+} from "react-server-dom-rsbuild/browser";
 import { rscStream } from "rsc-html-stream/client";
 
 import type { ReactServerPayload } from "./react-server";
@@ -20,12 +20,11 @@ async function callServer(id: string, args: any[]) {
     },
     method: "POST",
   });
-  return createFromFetch(responsePromise, { callServer });
+  return createFromFetch(responsePromise);
 }
 
-createFromReadableStream(rscStream, {
-  callServer,
-}).then((payload: ReactServerPayload) =>
+setServerCallback(callServer);
+createFromReadableStream<ReactServerPayload>(rscStream).then((payload) =>
   startTransition(() => {
     hydrateRoot(document, payload.root);
   })
