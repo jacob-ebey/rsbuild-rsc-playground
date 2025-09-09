@@ -12,9 +12,11 @@ import { RsbuildPlugin } from "@rsbuild/core";
  * because it overrides the default static file handling.
  */
 export function pluginFetchServer({
+  entry = "index",
   env,
   publicDir,
 }: {
+  entry?: string;
   env: string;
   publicDir?: string;
 }): RsbuildPlugin {
@@ -52,7 +54,7 @@ export function pluginFetchServer({
                   | { default: { fetch: FetchFunction } }
                   | { fetch: FetchFunction }
                   | { handler: FetchFunction }
-                >("index");
+                >(entry);
 
                 let handler: FetchFunction;
                 if (
