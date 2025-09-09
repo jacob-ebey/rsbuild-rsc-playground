@@ -14,3 +14,4 @@ Experimental playground for React Server Components with RSBuild.
 
 - Code splitting
 - CSS imports in server components
+- Dev mode (hrm crashes - thinking layering is busted somehow)
