@@ -14,6 +14,7 @@ export default defineConfig({
       },
       output: {
         target: "web",
+        minify: false,
         distPath: {
           root: "dist/web",
         },
@@ -27,6 +28,7 @@ export default defineConfig({
       },
       output: {
         target: "node",
+        minify: false,
         module: true,
         distPath: {
           root: "dist/node",

@@ -5,7 +5,6 @@ import { SortableSet } from "./webpack-sortable-set";
 export async function addResourceToCompilation(
   compilation: Compilation,
   resource: string,
-  prefix: string,
   layer?: string
 ) {
   const {

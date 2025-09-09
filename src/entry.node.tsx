@@ -1,9 +1,10 @@
 import "client-only";
 import ReactDOM from "react-dom/server.edge";
+// @ts-expect-error - no types
 import { createFromReadableStream } from "react-server-dom-webpack/client.edge";
 import { injectRSCPayload } from "rsc-html-stream/server";
 
-import reactServer from "./react-server" with { env: "react-server" };
+import reactServer, { ReactServerPayload } from "./react-server" with { env: "react-server" };
 
 declare const ___REACT_BOOTSTRAP_SCRIPTS___: string[];
 declare const ___REACT_SSR_MANIFEST___: unknown;
@@ -11,7 +12,11 @@ declare const ___REACT_SSR_MANIFEST___: unknown;
 export default {
   async fetch(request: Request): Promise<Response> {
     const rscResponse = await reactServer.fetch(request);
-    // return rscResponse;
+
+    if (request.headers.get("Accept")?.match(/text\/x-component/)) {
+      return rscResponse;
+    }
+    
     const [rscStream, rscStreamClone] = rscResponse.body!.tee();
     const streamBuffer: Uint8Array[] = [];
     await rscStream.pipeTo(
@@ -22,7 +27,7 @@ export default {
       })
     );
 
-    const root = await createFromReadableStream(
+    const payload: ReactServerPayload = await createFromReadableStream(
       new ReadableStream({
         start(controller) {
           for (const chunk of streamBuffer) {
@@ -32,16 +37,17 @@ export default {
         },
       }),
       {
+        replayConsoleLogs: false,
         serverConsumerManifest: ___REACT_SSR_MANIFEST___,
       }
     );
 
-    const reactStream = await ReactDOM.renderToReadableStream(root, {
+    const reactStream = await ReactDOM.renderToReadableStream(payload.root, {
       bootstrapScripts: ___REACT_BOOTSTRAP_SCRIPTS___,
       signal: request.signal,
     });
     return new Response(reactStream.pipeThrough(injectRSCPayload(rscStreamClone)), {
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html", Vary: "Accept" },
     });
   },
 };
